@@ -4,7 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"testing"
+	"time"
 
 	sdpUtils "github.com/stellar/stellar-disbursement-platform-backend/internal/utils"
 
@@ -36,6 +39,10 @@ func Test_NewSignerRouter(t *testing.T) {
 	distributionKP := keypair.MustRandom()
 	hostKP := keypair.MustRandom()
 	mLedgerNumberTracker := preconditionsMocks.NewMockLedgerNumberTracker(t)
+
+	tsaServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	defer tsaServer.Close()
+
 	validOptions := SignatureRouterOptions{
 		NetworkPassphrase:           networkPassphrase,
 		DBConnectionPool:            dbConnectionPool,
@@ -45,6 +52,7 @@ func Test_NewSignerRouter(t *testing.T) {
 		DistributionPrivateKey:      distributionKP.Seed(),
 		HostPrivateKey:              hostKP.Seed(),
 		Encrypter:                   &sdpUtils.DefaultPrivateKeyEncrypter{},
+		TSABaseURL:                  tsaServer.URL,
 	}
 
 	// Create valid SignerClients:
@@ -73,6 +81,12 @@ func Test_NewSignerRouter(t *testing.T) {
 		encryptionPassphrase: distAccEncryptionPassphrase,
 		dbVault:              store.NewDBVaultModel(dbConnectionPool),
 		encrypter:            &sdpUtils.DefaultPrivateKeyEncrypter{},
+	}
+	wantDistAccExternalTSASigner := &ExternalTSASignatureClient{
+		networkPassphrase: networkPassphrase,
+		baseURL:           tsaServer.URL,
+		authToken:         "",
+		httpClient:        &http.Client{Timeout: 30 * time.Second},
 	}
 
 	testCases := []struct {
@@ -113,6 +127,14 @@ func Test_NewSignerRouter(t *testing.T) {
 				NetworkPassphrase: networkPassphrase,
 			},
 			wantErrContains: `creating a new "DISTRIBUTION_ACCOUNT.STELLAR.DB_VAULT" signature client`,
+		},
+		{
+			name:         "error when DISTRIBUTION_ACCOUNT.STELLAR.EXTERNAL_TSA fails to be instantiated",
+			accountTypes: []schema.AccountType{schema.DistributionAccountStellarExternalTSA},
+			opts: SignatureRouterOptions{
+				NetworkPassphrase: networkPassphrase,
+			},
+			wantErrContains: `creating a new "DISTRIBUTION_ACCOUNT.STELLAR.EXTERNAL_TSA" signature client`,
 		},
 		{
 			name:            "error when an invalid account type is passed",
@@ -164,20 +186,33 @@ func Test_NewSignerRouter(t *testing.T) {
 			},
 		},
 		{
+			name:         "🎉 successfully instantiate new signature router with accountTypes=[DISTRIBUTION_ACCOUNT.STELLAR.EXTERNAL_TSA]",
+			accountTypes: []schema.AccountType{schema.DistributionAccountStellarExternalTSA},
+			opts:         validOptions,
+			wantSignerRouter: &SignerRouterImpl{
+				strategies: map[schema.AccountType]SignatureClient{
+					schema.DistributionAccountStellarExternalTSA: wantDistAccExternalTSASigner,
+				},
+				networkPassphrase: networkPassphrase,
+			},
+		},
+		{
 			name: "🎉 successfully instantiate new signature router with ALL types (non-empty accountTypes parameter)",
 			accountTypes: []schema.AccountType{
 				schema.HostStellarEnv,
 				schema.ChannelAccountStellarDB,
 				schema.DistributionAccountStellarEnv,
 				schema.DistributionAccountStellarDBVault,
+				schema.DistributionAccountStellarExternalTSA,
 			},
 			opts: validOptions,
 			wantSignerRouter: &SignerRouterImpl{
 				strategies: map[schema.AccountType]SignatureClient{
-					schema.HostStellarEnv:                    wantHostAccStellarEnvSigner,
-					schema.ChannelAccountStellarDB:           wantChAccStellarDBSigner,
-					schema.DistributionAccountStellarEnv:     wantDistAccStellarEnvSigner,
-					schema.DistributionAccountStellarDBVault: wantDistAccStellarDBVaultSigner,
+					schema.HostStellarEnv:                        wantHostAccStellarEnvSigner,
+					schema.ChannelAccountStellarDB:               wantChAccStellarDBSigner,
+					schema.DistributionAccountStellarEnv:         wantDistAccStellarEnvSigner,
+					schema.DistributionAccountStellarDBVault:     wantDistAccStellarDBVaultSigner,
+					schema.DistributionAccountStellarExternalTSA: wantDistAccExternalTSASigner,
 				},
 				networkPassphrase: networkPassphrase,
 			},
@@ -187,10 +222,11 @@ func Test_NewSignerRouter(t *testing.T) {
 			opts: validOptions,
 			wantSignerRouter: &SignerRouterImpl{
 				strategies: map[schema.AccountType]SignatureClient{
-					schema.HostStellarEnv:                    wantHostAccStellarEnvSigner,
-					schema.ChannelAccountStellarDB:           wantChAccStellarDBSigner,
-					schema.DistributionAccountStellarEnv:     wantDistAccStellarEnvSigner,
-					schema.DistributionAccountStellarDBVault: wantDistAccStellarDBVaultSigner,
+					schema.HostStellarEnv:                        wantHostAccStellarEnvSigner,
+					schema.ChannelAccountStellarDB:               wantChAccStellarDBSigner,
+					schema.DistributionAccountStellarEnv:         wantDistAccStellarEnvSigner,
+					schema.DistributionAccountStellarDBVault:     wantDistAccStellarDBVaultSigner,
+					schema.DistributionAccountStellarExternalTSA: wantDistAccExternalTSASigner,
 				},
 				networkPassphrase: networkPassphrase,
 			},
@@ -225,6 +261,10 @@ func Test_SignerRouterImpl_RouteSigner(t *testing.T) {
 	distributionKP := keypair.MustRandom()
 	hostKP := keypair.MustRandom()
 	mLedgerNumberTracker := preconditionsMocks.NewMockLedgerNumberTracker(t)
+
+	tsaServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	defer tsaServer.Close()
+
 	validOptions := SignatureRouterOptions{
 		NetworkPassphrase:           networkPassphrase,
 		DBConnectionPool:            dbConnectionPool,
@@ -234,6 +274,7 @@ func Test_SignerRouterImpl_RouteSigner(t *testing.T) {
 		DistributionPrivateKey:      distributionKP.Seed(),
 		HostPrivateKey:              hostKP.Seed(),
 		Encrypter:                   &sdpUtils.DefaultPrivateKeyEncrypter{},
+		TSABaseURL:                  tsaServer.URL,
 	}
 
 	sigRouter, err := NewSignerRouter(validOptions)
@@ -272,6 +313,11 @@ func Test_SignerRouterImpl_RouteSigner(t *testing.T) {
 			name:           fmt.Sprintf("🎉 successfully routes to %s", schema.DistributionAccountStellarDBVault),
 			accountType:    schema.DistributionAccountStellarDBVault,
 			wantSignerType: &DistributionAccountDBVaultSignatureClient{},
+		},
+		{
+			name:           fmt.Sprintf("🎉 successfully routes to %s", schema.DistributionAccountStellarExternalTSA),
+			accountType:    schema.DistributionAccountStellarExternalTSA,
+			wantSignerType: &ExternalTSASignatureClient{},
 		},
 	}
 
@@ -635,6 +681,10 @@ func Test_SignerRouterImpl_BatchInsert(t *testing.T) {
 	hostKP := keypair.MustRandom()
 	mLedgerNumberTracker := preconditionsMocks.NewMockLedgerNumberTracker(t)
 	mLedgerNumberTracker.On("GetLedgerNumber").Return(1, nil)
+
+	tsaServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	defer tsaServer.Close()
+
 	validOptions := SignatureRouterOptions{
 		NetworkPassphrase:           networkPassphrase,
 		DBConnectionPool:            dbConnectionPool,
@@ -644,6 +694,7 @@ func Test_SignerRouterImpl_BatchInsert(t *testing.T) {
 		DistributionPrivateKey:      distributionKP.Seed(),
 		HostPrivateKey:              hostKP.Seed(),
 		Encrypter:                   &sdpUtils.DefaultPrivateKeyEncrypter{},
+		TSABaseURL:                  tsaServer.URL,
 	}
 
 	testCases := []struct {
@@ -752,6 +803,10 @@ func Test_SignerRouterImpl_Delete(t *testing.T) {
 	hostKP := keypair.MustRandom()
 	mLedgerNumberTracker := preconditionsMocks.NewMockLedgerNumberTracker(t)
 	mLedgerNumberTracker.On("GetLedgerNumber").Return(1, nil)
+
+	tsaServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	defer tsaServer.Close()
+
 	validOptions := SignatureRouterOptions{
 		NetworkPassphrase:           networkPassphrase,
 		DBConnectionPool:            dbConnectionPool,
@@ -761,6 +816,7 @@ func Test_SignerRouterImpl_Delete(t *testing.T) {
 		DistributionPrivateKey:      distributionKP.Seed(),
 		HostPrivateKey:              hostKP.Seed(),
 		Encrypter:                   &sdpUtils.DefaultPrivateKeyEncrypter{},
+		TSABaseURL:                  tsaServer.URL,
 	}
 	sigRouter, err := NewSignerRouter(validOptions)
 	require.NoError(t, err)
@@ -913,6 +969,10 @@ func Test_SignerRouterImpl_SupportedAccountTypes(t *testing.T) {
 	distributionKP := keypair.MustRandom()
 	hostKP := keypair.MustRandom()
 	mLedgerNumberTracker := preconditionsMocks.NewMockLedgerNumberTracker(t)
+
+	tsaServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	defer tsaServer.Close()
+
 	validOptions := SignatureRouterOptions{
 		NetworkPassphrase:           networkPassphrase,
 		DBConnectionPool:            dbConnectionPool,
@@ -922,6 +982,7 @@ func Test_SignerRouterImpl_SupportedAccountTypes(t *testing.T) {
 		DistributionPrivateKey:      distributionKP.Seed(),
 		HostPrivateKey:              hostKP.Seed(),
 		Encrypter:                   &sdpUtils.DefaultPrivateKeyEncrypter{},
+		TSABaseURL:                  tsaServer.URL,
 	}
 
 	testCases := []struct {
@@ -931,12 +992,12 @@ func Test_SignerRouterImpl_SupportedAccountTypes(t *testing.T) {
 	}{
 		{
 			name:          "returns all supported account types when no input types are provided",
-			wantSupported: []schema.AccountType{schema.HostStellarEnv, schema.ChannelAccountStellarDB, schema.DistributionAccountStellarEnv, schema.DistributionAccountStellarDBVault},
+			wantSupported: []schema.AccountType{schema.HostStellarEnv, schema.ChannelAccountStellarDB, schema.DistributionAccountStellarEnv, schema.DistributionAccountStellarDBVault, schema.DistributionAccountStellarExternalTSA},
 		},
 		{
 			name:          "returns all supported account types when all input types are provided",
-			inputTypes:    []schema.AccountType{schema.HostStellarEnv, schema.ChannelAccountStellarDB, schema.DistributionAccountStellarEnv, schema.DistributionAccountStellarDBVault},
-			wantSupported: []schema.AccountType{schema.HostStellarEnv, schema.ChannelAccountStellarDB, schema.DistributionAccountStellarEnv, schema.DistributionAccountStellarDBVault},
+			inputTypes:    []schema.AccountType{schema.HostStellarEnv, schema.ChannelAccountStellarDB, schema.DistributionAccountStellarEnv, schema.DistributionAccountStellarDBVault, schema.DistributionAccountStellarExternalTSA},
+			wantSupported: []schema.AccountType{schema.HostStellarEnv, schema.ChannelAccountStellarDB, schema.DistributionAccountStellarEnv, schema.DistributionAccountStellarDBVault, schema.DistributionAccountStellarExternalTSA},
 		},
 		{
 			name:          "returns only supported account types when some input types are provided",

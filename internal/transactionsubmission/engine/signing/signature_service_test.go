@@ -1,7 +1,10 @@
 package signing
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"testing"
+	"time"
 
 	sdpUtils "github.com/stellar/stellar-disbursement-platform-backend/internal/utils"
 
@@ -102,6 +105,9 @@ func Test_NewSignatureService(t *testing.T) {
 	mLedgerNumberTracker := preconditionsMocks.NewMockLedgerNumberTracker(t)
 	distributionKP := keypair.MustRandom()
 
+	tsaServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	defer tsaServer.Close()
+
 	wantChAccountSigner := &ChannelAccountDBSignatureClient{
 		networkPassphrase:    network.TestNetworkPassphrase,
 		dbConnectionPool:     dbConnectionPool,
@@ -128,11 +134,18 @@ func Test_NewSignatureService(t *testing.T) {
 		dbVault:              store.NewDBVaultModel(dbConnectionPool),
 		encrypter:            &sdpUtils.DefaultPrivateKeyEncrypter{},
 	}
+	wantDistAccountExternalTSASigner := &ExternalTSASignatureClient{
+		networkPassphrase: network.TestNetworkPassphrase,
+		baseURL:           tsaServer.URL,
+		authToken:         "",
+		httpClient:        &http.Client{Timeout: 30 * time.Second},
+	}
 	wantSigRouterStrategies := map[schema.AccountType]SignatureClient{
-		schema.HostStellarEnv:                    wantHostAccountEnvSigner,
-		schema.ChannelAccountStellarDB:           wantChAccountSigner,
-		schema.DistributionAccountStellarEnv:     wantDistAccountEnvSigner,
-		schema.DistributionAccountStellarDBVault: wantDistAccountDBSigner,
+		schema.HostStellarEnv:                        wantHostAccountEnvSigner,
+		schema.ChannelAccountStellarDB:               wantChAccountSigner,
+		schema.DistributionAccountStellarEnv:         wantDistAccountEnvSigner,
+		schema.DistributionAccountStellarDBVault:     wantDistAccountDBSigner,
+		schema.DistributionAccountStellarExternalTSA: wantDistAccountExternalTSASigner,
 	}
 
 	wantDistAccountResolver := &DistributionAccountResolverImpl{
@@ -168,6 +181,7 @@ func Test_NewSignatureService(t *testing.T) {
 				DistAccEncryptionPassphrase: distAccEncryptionPassphrase,
 				DistributionPrivateKey:      distributionKP.Seed(),
 				DistributionAccountResolver: wantDistAccountResolver,
+				TSABaseURL:                  tsaServer.URL,
 			},
 
 			wantSigService: SignatureService{
