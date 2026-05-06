@@ -261,6 +261,20 @@ func BaseDistributionAccountSignatureClientConfigOptions(opts *signing.Signature
 			ConfigKey:      &opts.DistributionPrivateKey,
 			Required:       true,
 		},
+		{
+			Name:      "tsa-base-url",
+			Usage:     "Base URL of the external Transaction Signing Agent service. Required when the Stellar distribution account signing is delegated to an external agent instead of being handled locally.",
+			OptType:   types.String,
+			ConfigKey: &opts.TSABaseURL,
+			Required:  false,
+		},
+		{
+			Name:      "tsa-auth-token",
+			Usage:     "Bearer token used to authenticate requests to the external Transaction Signing Agent service.",
+			OptType:   types.String,
+			ConfigKey: &opts.TSAAuthToken,
+			Required:  false,
+		},
 	}
 }
 

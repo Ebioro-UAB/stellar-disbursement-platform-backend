@@ -53,6 +53,10 @@ type SignatureServiceOptions struct {
 	LedgerNumberTracker preconditions.LedgerNumberTracker
 	Encrypter           sdpUtils.PrivateKeyEncrypter
 
+	// DistributionAccountExternalTSA:
+	TSABaseURL   string
+	TSAAuthToken string
+
 	// DistributionAccountResolver
 	DistributionAccountResolver
 }
@@ -72,6 +76,8 @@ func NewSignatureService(opts SignatureServiceOptions) (SignatureService, error)
 		DistAccEncryptionPassphrase: opts.DistAccEncryptionPassphrase,
 		Encrypter:                   opts.Encrypter,
 		LedgerNumberTracker:         opts.LedgerNumberTracker,
+		TSABaseURL:                  opts.TSABaseURL,
+		TSAAuthToken:                opts.TSAAuthToken,
 	}
 
 	sigRouter, err := NewSignerRouter(sigRouterOpts)

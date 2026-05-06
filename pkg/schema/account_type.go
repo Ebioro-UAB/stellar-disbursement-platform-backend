@@ -6,11 +6,12 @@ package schema
 type AccountType string
 
 const (
-	HostStellarEnv                    AccountType = "HOST.STELLAR.ENV"
-	ChannelAccountStellarDB           AccountType = "CHANNEL_ACCOUNT.STELLAR.DB"
-	DistributionAccountStellarEnv     AccountType = "DISTRIBUTION_ACCOUNT.STELLAR.ENV"      // was "ENV_STELLAR"
-	DistributionAccountStellarDBVault AccountType = "DISTRIBUTION_ACCOUNT.STELLAR.DB_VAULT" // was "DB_VAULT_STELLAR"
-	DistributionAccountCircleDBVault  AccountType = "DISTRIBUTION_ACCOUNT.CIRCLE.DB_VAULT"  // was "DB_VAULT_CIRCLE"
+	HostStellarEnv                        AccountType = "HOST.STELLAR.ENV"
+	ChannelAccountStellarDB               AccountType = "CHANNEL_ACCOUNT.STELLAR.DB"
+	DistributionAccountStellarEnv         AccountType = "DISTRIBUTION_ACCOUNT.STELLAR.ENV"          // was "ENV_STELLAR"
+	DistributionAccountStellarDBVault     AccountType = "DISTRIBUTION_ACCOUNT.STELLAR.DB_VAULT"     // was "DB_VAULT_STELLAR"
+	DistributionAccountCircleDBVault      AccountType = "DISTRIBUTION_ACCOUNT.CIRCLE.DB_VAULT"      // was "DB_VAULT_CIRCLE"
+	DistributionAccountStellarExternalTSA AccountType = "DISTRIBUTION_ACCOUNT.STELLAR.EXTERNAL_TSA" // external signing via TSA HTTP service
 )
 
 func AllAccountTypes() []AccountType {
@@ -20,6 +21,7 @@ func AllAccountTypes() []AccountType {
 		DistributionAccountStellarEnv,
 		DistributionAccountStellarDBVault,
 		DistributionAccountCircleDBVault,
+		DistributionAccountStellarExternalTSA,
 	}
 }
 
@@ -51,11 +53,12 @@ const (
 )
 
 var accRoleMap = map[AccountType]Role{
-	HostStellarEnv:                    HostRole,
-	ChannelAccountStellarDB:           ChannelAccountRole,
-	DistributionAccountStellarEnv:     DistributionAccountRole,
-	DistributionAccountStellarDBVault: DistributionAccountRole,
-	DistributionAccountCircleDBVault:  DistributionAccountRole,
+	HostStellarEnv:                        HostRole,
+	ChannelAccountStellarDB:               ChannelAccountRole,
+	DistributionAccountStellarEnv:         DistributionAccountRole,
+	DistributionAccountStellarDBVault:     DistributionAccountRole,
+	DistributionAccountCircleDBVault:      DistributionAccountRole,
+	DistributionAccountStellarExternalTSA: DistributionAccountRole,
 }
 
 func (t AccountType) Role() Role {
@@ -71,32 +74,35 @@ const (
 )
 
 var accPlatformMap = map[AccountType]Platform{
-	HostStellarEnv:                    StellarPlatform,
-	ChannelAccountStellarDB:           StellarPlatform,
-	DistributionAccountStellarEnv:     StellarPlatform,
-	DistributionAccountStellarDBVault: StellarPlatform,
-	DistributionAccountCircleDBVault:  CirclePlatform,
+	HostStellarEnv:                        StellarPlatform,
+	ChannelAccountStellarDB:               StellarPlatform,
+	DistributionAccountStellarEnv:         StellarPlatform,
+	DistributionAccountStellarDBVault:     StellarPlatform,
+	DistributionAccountCircleDBVault:      CirclePlatform,
+	DistributionAccountStellarExternalTSA: StellarPlatform,
 }
 
 func (t AccountType) Platform() Platform {
 	return accPlatformMap[t]
 }
 
-// StorageMethod represents the method used to store the account secret, e.g. ENV, DB_VAULT, or DB.
+// StorageMethod represents the method used to store the account secret, e.g. ENV, DB_VAULT, DB, or EXTERNAL_TSA.
 type StorageMethod string
 
 const (
-	EnvStorageMethod     StorageMethod = "ENV"
-	DBStorageMethod      StorageMethod = "DB"
-	DBVaultStorageMethod StorageMethod = "DB_VAULT"
+	EnvStorageMethod         StorageMethod = "ENV"
+	DBStorageMethod          StorageMethod = "DB"
+	DBVaultStorageMethod     StorageMethod = "DB_VAULT"
+	ExternalTSAStorageMethod StorageMethod = "EXTERNAL_TSA"
 )
 
 var accStorageMethodMap = map[AccountType]StorageMethod{
-	HostStellarEnv:                    EnvStorageMethod,
-	ChannelAccountStellarDB:           DBStorageMethod,
-	DistributionAccountStellarEnv:     EnvStorageMethod,
-	DistributionAccountStellarDBVault: DBVaultStorageMethod,
-	DistributionAccountCircleDBVault:  DBVaultStorageMethod,
+	HostStellarEnv:                        EnvStorageMethod,
+	ChannelAccountStellarDB:               DBStorageMethod,
+	DistributionAccountStellarEnv:         EnvStorageMethod,
+	DistributionAccountStellarDBVault:     DBVaultStorageMethod,
+	DistributionAccountCircleDBVault:      DBVaultStorageMethod,
+	DistributionAccountStellarExternalTSA: ExternalTSAStorageMethod,
 }
 
 func (t AccountType) StorageMethod() StorageMethod {

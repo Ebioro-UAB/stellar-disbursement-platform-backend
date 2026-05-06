@@ -59,6 +59,10 @@ type SignatureRouterOptions struct {
 	// *.STELLAR.DB_VAULT:
 	DBConnectionPool db.DBConnectionPool
 	Encrypter        sdpUtils.PrivateKeyEncrypter // (optional)
+
+	// DISTRIBUTION_ACCOUNT.STELLAR.EXTERNAL_TSA:
+	TSABaseURL   string
+	TSAAuthToken string
 }
 
 func NewSignerRouter(opts SignatureRouterOptions, accountTypes ...schema.AccountType) (SignerRouter, error) {
@@ -68,6 +72,9 @@ func NewSignerRouter(opts SignatureRouterOptions, accountTypes ...schema.Account
 			schema.ChannelAccountStellarDB,
 			schema.DistributionAccountStellarEnv,
 			schema.DistributionAccountStellarDBVault,
+		}
+		if opts.TSABaseURL != "" {
+			accountTypes = append(accountTypes, schema.DistributionAccountStellarExternalTSA)
 		}
 	}
 
@@ -106,6 +113,13 @@ func NewSignerRouter(opts SignatureRouterOptions, accountTypes ...schema.Account
 				DBConnectionPool:     opts.DBConnectionPool,
 				EncryptionPassphrase: opts.DistAccEncryptionPassphrase,
 				Encrypter:            opts.Encrypter,
+			})
+
+		case schema.DistributionAccountStellarExternalTSA:
+			newSigClient, err = NewExternalTSASignatureClient(ExternalTSAOptions{
+				NetworkPassphrase: opts.NetworkPassphrase,
+				BaseURL:           opts.TSABaseURL,
+				AuthToken:         opts.TSAAuthToken,
 			})
 
 		default:
