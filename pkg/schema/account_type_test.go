@@ -17,6 +17,7 @@ func Test_AccountType_IsStellar(t *testing.T) {
 		{accountType: DistributionAccountStellarEnv, isStellar: true},
 		{accountType: DistributionAccountStellarDBVault, isStellar: true},
 		{accountType: DistributionAccountCircleDBVault, isStellar: false},
+		{accountType: DistributionAccountStellarExternalTSA, isStellar: true},
 	}
 	for _, tc := range testCases {
 		t.Run(string(tc.accountType), func(t *testing.T) {
@@ -39,6 +40,7 @@ func Test_AccountType_IsCircle(t *testing.T) {
 		{accountType: DistributionAccountStellarEnv, isCircle: false},
 		{accountType: DistributionAccountStellarDBVault, isCircle: false},
 		{accountType: DistributionAccountCircleDBVault, isCircle: true},
+		{accountType: DistributionAccountStellarExternalTSA, isCircle: false},
 	}
 	for _, tc := range testCases {
 		t.Run(string(tc.accountType), func(t *testing.T) {
@@ -61,6 +63,7 @@ func Test_AccountType_Role(t *testing.T) {
 		{accountType: DistributionAccountStellarEnv, wantRole: DistributionAccountRole},
 		{accountType: DistributionAccountStellarDBVault, wantRole: DistributionAccountRole},
 		{accountType: DistributionAccountCircleDBVault, wantRole: DistributionAccountRole},
+		{accountType: DistributionAccountStellarExternalTSA, wantRole: DistributionAccountRole},
 	}
 	for _, tc := range testCases {
 		t.Run(string(tc.accountType), func(t *testing.T) {
@@ -85,6 +88,7 @@ func Test_AccountType_Platform(t *testing.T) {
 		{accountType: DistributionAccountStellarEnv, wantPlatform: StellarPlatform},
 		{accountType: DistributionAccountStellarDBVault, wantPlatform: StellarPlatform},
 		{accountType: DistributionAccountCircleDBVault, wantPlatform: CirclePlatform},
+		{accountType: DistributionAccountStellarExternalTSA, wantPlatform: StellarPlatform},
 	}
 	for _, tc := range testCases {
 		t.Run(string(tc.accountType), func(t *testing.T) {
@@ -109,6 +113,7 @@ func Test_AccountType_StorageMethod(t *testing.T) {
 		{accountType: DistributionAccountStellarEnv, wantStorageMethod: EnvStorageMethod},
 		{accountType: DistributionAccountStellarDBVault, wantStorageMethod: DBVaultStorageMethod},
 		{accountType: DistributionAccountCircleDBVault, wantStorageMethod: DBVaultStorageMethod},
+		{accountType: DistributionAccountStellarExternalTSA, wantStorageMethod: ExternalTSAStorageMethod},
 	}
 	for _, tc := range testCases {
 		t.Run(string(tc.accountType), func(t *testing.T) {

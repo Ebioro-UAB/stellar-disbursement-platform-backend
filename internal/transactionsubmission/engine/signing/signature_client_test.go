@@ -1,7 +1,9 @@
 package signing
 
 import (
+	"net/http"
 	"testing"
+	"time"
 
 	sdpUtils "github.com/stellar/stellar-disbursement-platform-backend/internal/utils"
 
@@ -87,6 +89,21 @@ func Test_NewSignatureClient(t *testing.T) {
 				distributionAccount: distributionKP.Address(),
 				distributionKP:      distributionKP,
 				accountType:         schema.DistributionAccountStellarEnv,
+			},
+		},
+		{
+			name:    "🎉 successfully instantiate an ExternalTSA instance",
+			accType: schema.DistributionAccountStellarExternalTSA,
+			opts: SignatureClientOptions{
+				NetworkPassphrase: network.TestNetworkPassphrase,
+				TSABaseURL:        "http://localhost:3000",
+				TSAAuthToken:      "test-token",
+			},
+			wantResult: &ExternalTSASignatureClient{
+				networkPassphrase: network.TestNetworkPassphrase,
+				baseURL:           "http://localhost:3000",
+				authToken:         "test-token",
+				httpClient:        &http.Client{Timeout: 30 * time.Second},
 			},
 		},
 		{

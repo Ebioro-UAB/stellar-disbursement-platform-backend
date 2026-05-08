@@ -41,6 +41,10 @@ type SignatureClientOptions struct {
 	DBConnectionPool    db.DBConnectionPool
 	LedgerNumberTracker preconditions.LedgerNumberTracker
 	Encrypter           sdpUtils.PrivateKeyEncrypter // (optional)
+
+	// DistributionAccountExternalTSA:
+	TSABaseURL   string
+	TSAAuthToken string
 }
 
 func NewSignatureClient(accType schema.AccountType, opts SignatureClientOptions) (SignatureClient, error) {
@@ -67,6 +71,13 @@ func NewSignatureClient(accType schema.AccountType, opts SignatureClientOptions)
 			DBConnectionPool:     opts.DBConnectionPool,
 			EncryptionPassphrase: opts.DistAccEncryptionPassphrase,
 			Encrypter:            opts.Encrypter,
+		})
+
+	case schema.DistributionAccountStellarExternalTSA:
+		return NewExternalTSASignatureClient(ExternalTSAOptions{
+			NetworkPassphrase: opts.NetworkPassphrase,
+			BaseURL:           opts.TSABaseURL,
+			AuthToken:         opts.TSAAuthToken,
 		})
 
 	default:
