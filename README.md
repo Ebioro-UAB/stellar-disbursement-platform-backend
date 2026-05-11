@@ -289,6 +289,22 @@ The Core service now includes native implementations of SEP10 and SEP24 protocol
 - **Multi-tenant Support**: Supports SEP10/SEP24 across different tenant domains
 - **JWT Token Management**: Handles authentication tokens for secure API access
 
+### External Transaction Signing
+
+The SDP supports delegating transaction signing to an external Transaction Signing Agent (TSA). When this mode is enabled, the SDP builds and submits transactions but the private key never leaves the external service — the TSA signs and returns raw signatures which the SDP attaches to the transaction envelope.
+
+To use this feature, the TSA must implement the API contract defined in [docs/tsa-api-contract.md](./docs/tsa-api-contract.md), and the tenant must be provisioned with `distribution_account_type=DISTRIBUTION_ACCOUNT.STELLAR.EXTERNAL_TSA`. When creating a tenant with this account type, the caller **must supply the public key** of the distribution account (`distribution_account_address`). The SDP never generates this key — the private key lives exclusively inside the TSA.
+
+**Account creation and funding are the tenant owner's responsibility.** The SDP does not create the Stellar account or bootstrap it with XLM. Before provisioning the tenant, the tenant owner must:
+
+1. Coordinate with the TSA operator to confirm which public key the TSA holds for this tenant.
+2. Create the Stellar account on-chain (e.g. via friendbot on testnet, or by funding from another account on pubnet).
+3. Fund the distribution account with enough XLM to cover transaction fees and trustline reserves.
+
+The public key provided at provisioning time **must match exactly** the key held by the TSA. Any mismatch means the TSA will reject signing requests with a `400 unknown signer public key` error, which is non-retryable.
+
+The SDP connects to the TSA using the `TSA_BASE_URL` and `TSA_AUTH_TOKEN` environment variables.
+
 ### Transaction Submission Service
 
 Refer to documentation [here](/internal/transactionsubmission/README.md).

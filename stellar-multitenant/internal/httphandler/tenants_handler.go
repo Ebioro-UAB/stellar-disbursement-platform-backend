@@ -125,7 +125,8 @@ func (h TenantsHandler) Post(rw http.ResponseWriter, req *http.Request) {
 		NetworkType:             string(h.NetworkType),
 		UIBaseURL:               tntSDPUIBaseURL,
 		BaseURL:                 tntBaseURL,
-		DistributionAccountType: schema.AccountType(reqBody.DistributionAccountType),
+		DistributionAccountType:    schema.AccountType(reqBody.DistributionAccountType),
+		DistributionAccountAddress: reqBody.DistributionAccountAddress,
 		MFADisabled:             &orgMFADisabled,
 		CAPTCHADisabled:         &orgCAPTCHADisabled,
 	})

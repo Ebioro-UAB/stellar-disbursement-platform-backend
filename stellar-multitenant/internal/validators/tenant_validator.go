@@ -7,6 +7,8 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/stellar/go-stellar-sdk/strkey"
+
 	"github.com/stellar/stellar-disbursement-platform-backend/internal/utils"
 	"github.com/stellar/stellar-disbursement-platform-backend/pkg/schema"
 )
@@ -19,8 +21,9 @@ type TenantRequest struct {
 	OwnerFirstName          string  `json:"owner_first_name"`
 	OwnerLastName           string  `json:"owner_last_name"`
 	OrganizationName        string  `json:"organization_name"`
-	DistributionAccountType string  `json:"distribution_account_type"`
-	BaseURL                 *string `json:"base_url"`
+	DistributionAccountType    string  `json:"distribution_account_type"`
+	DistributionAccountAddress string  `json:"distribution_account_address"`
+	BaseURL                    *string `json:"base_url"`
 	SDPUIBaseURL            *string `json:"sdp_ui_base_url"`
 }
 
@@ -63,6 +66,10 @@ func (tv *TenantValidator) ValidateCreateTenantRequest(reqBody *TenantRequest) *
 	tv.Check(reqBody.OrganizationName != "", "organization_name", "organization_name is required")
 
 	tv.validateDistributionAccountType(reqBody.DistributionAccountType)
+	if schema.AccountType(reqBody.DistributionAccountType) == schema.DistributionAccountStellarExternalTSA {
+		tv.Check(reqBody.DistributionAccountAddress != "", "distribution_account_address", "distribution_account_address is required for account type EXTERNAL_TSA")
+		tv.Check(strkey.IsValidEd25519PublicKey(reqBody.DistributionAccountAddress), "distribution_account_address", "distribution_account_address is not a valid Stellar public key")
+	}
 
 	var err error
 	if reqBody.BaseURL != nil {

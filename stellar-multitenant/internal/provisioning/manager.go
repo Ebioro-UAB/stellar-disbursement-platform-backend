@@ -38,8 +38,9 @@ type ProvisionTenant struct {
 	UIBaseURL               string
 	BaseURL                 string
 	NetworkType             string
-	DistributionAccountType schema.AccountType
-	MFADisabled             *bool
+	DistributionAccountType    schema.AccountType
+	DistributionAccountAddress string
+	MFADisabled                *bool
 	CAPTCHADisabled         *bool
 }
 
@@ -138,6 +139,9 @@ func (m *Manager) provisionTenant(ctx context.Context, pt *ProvisionTenant) (*sc
 	}
 
 	// Provision distribution account for tenant if necessary
+	if pt.DistributionAccountType == schema.DistributionAccountStellarExternalTSA {
+		t.DistributionAccountAddress = &pt.DistributionAccountAddress
+	}
 	err := m.provisionDistributionAccount(ctx, t, pt.DistributionAccountType)
 	if err != nil {
 		return t, fmt.Errorf("provisioning distribution account: %w", err)
@@ -193,6 +197,10 @@ func (m *Manager) fundTenantDistributionStellarAccountIfNeeded(ctx context.Conte
 
 	case schema.DistributionAccountCircleDBVault:
 		log.Ctx(ctx).Warnf("Tenant distribution account is configured to use accountType=%s, the tenant will need to complete the setup through the UI.", tenant.DistributionAccountType)
+		return nil
+
+	case schema.DistributionAccountStellarExternalTSA:
+		log.Ctx(ctx).Warnf("Tenant distribution account is configured to use accountType=%s, it must be funded externally.", tenant.DistributionAccountType)
 		return nil
 
 	default:
@@ -277,6 +285,12 @@ func (m *Manager) provisionDistributionAccount(ctx context.Context, t *schema.Te
 			return fmt.Errorf("%w: expected single distribution account public key, got %d", ErrUpdateTenantFailed, len(distributionAccounts))
 		}
 		t.DistributionAccountAddress = &distributionAccounts[0].Address
+		t.DistributionAccountType = accountType
+		t.DistributionAccountStatus = schema.AccountStatusActive
+		log.Ctx(ctx).Infof("distribution account for tenant %s was set to %s", t.Name, *t.DistributionAccountAddress)
+		return nil
+
+	case schema.DistributionAccountStellarExternalTSA:
 		t.DistributionAccountType = accountType
 		t.DistributionAccountStatus = schema.AccountStatusActive
 		log.Ctx(ctx).Infof("distribution account for tenant %s was set to %s", t.Name, *t.DistributionAccountAddress)

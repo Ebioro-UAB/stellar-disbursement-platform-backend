@@ -144,10 +144,11 @@ func Test_Manager_ProvisionNewTenant(t *testing.T) {
 	tenantManager := tenant.NewManager(tenant.WithDatabase(dbConnectionPool))
 
 	testCases := []struct {
-		name              string
-		networkPassphrase string
-		tenantName        string
-		accountType       schema.AccountType
+		name                       string
+		networkPassphrase          string
+		tenantName                 string
+		accountType                schema.AccountType
+		distributionAccountAddress string
 	}{
 		{
 			name:              "[Testnet] accountType=DISTRIBUTION_ACCOUNT.STELLAR.ENV",
@@ -184,6 +185,20 @@ func Test_Manager_ProvisionNewTenant(t *testing.T) {
 			networkPassphrase: network.PublicNetworkPassphrase,
 			tenantName:        "pubnet-circle-dbvault",
 			accountType:       schema.DistributionAccountCircleDBVault,
+		},
+		{
+			name:                       "[Testnet] accountType=DISTRIBUTION_ACCOUNT.STELLAR.EXTERNAL_TSA",
+			networkPassphrase:          network.TestNetworkPassphrase,
+			tenantName:                 "testnet-external-tsa",
+			accountType:                schema.DistributionAccountStellarExternalTSA,
+			distributionAccountAddress: keypair.MustRandom().Address(),
+		},
+		{
+			name:                       "[Pubnet] accountType=DISTRIBUTION_ACCOUNT.STELLAR.EXTERNAL_TSA",
+			networkPassphrase:          network.PublicNetworkPassphrase,
+			tenantName:                 "pubnet-external-tsa",
+			accountType:                schema.DistributionAccountStellarExternalTSA,
+			distributionAccountAddress: keypair.MustRandom().Address(),
 		},
 	}
 
@@ -281,6 +296,26 @@ func Test_Manager_ProvisionNewTenant(t *testing.T) {
 
 				signatureStrategies[tc.accountType] = distAccSigClient
 
+			case schema.DistributionAccountStellarExternalTSA:
+				distAccSigClient := mocks.NewMockSignatureClient(t)
+				distAccSigClient.On("NetworkPassphrase").Return(tc.networkPassphrase).Maybe()
+				distAccSigClient.
+					On("SignStellarTransaction", ctx, mock.AnythingOfType("*txnbuild.Transaction"), tc.distributionAccountAddress).
+					Return(&txnbuild.Transaction{}, nil).
+					Once()
+				wantDistAccAddress = tc.distributionAccountAddress
+
+				signatureStrategies[tc.accountType] = distAccSigClient
+
+				mHorizonClient.
+					On("AccountDetail", horizonclient.AccountRequest{AccountID: tc.distributionAccountAddress}).
+					Return(horizon.Account{AccountID: tc.distributionAccountAddress, Sequence: 1}, nil).
+					Once()
+				mHorizonClient.
+					On("SubmitTransactionWithOptions", mock.AnythingOfType("*txnbuild.Transaction"), horizonclient.SubmitTxOpts{SkipMemoRequiredCheck: true}).
+					Return(horizon.Transaction{}, nil).
+					Once()
+
 			default:
 				require.Failf(t, "invalid sigClientType=%s", string(tc.accountType))
 			}
@@ -312,15 +347,16 @@ func Test_Manager_ProvisionNewTenant(t *testing.T) {
 			networkType, err := sdpUtils.GetNetworkTypeFromNetworkPassphrase(tc.networkPassphrase)
 			require.NoError(t, err)
 			tnt, err := p.ProvisionNewTenant(ctx, ProvisionTenant{
-				Name:                    tc.tenantName,
-				UserFirstName:           userFirstName,
-				UserLastName:            userLastName,
-				UserEmail:               userEmail,
-				OrgName:                 userOrgName,
-				NetworkType:             string(networkType),
-				UIBaseURL:               sdpUIBaseURL,
-				BaseURL:                 baseURL,
-				DistributionAccountType: tc.accountType,
+				Name:                       tc.tenantName,
+				UserFirstName:              userFirstName,
+				UserLastName:               userLastName,
+				UserEmail:                  userEmail,
+				OrgName:                    userOrgName,
+				NetworkType:                string(networkType),
+				UIBaseURL:                  sdpUIBaseURL,
+				BaseURL:                    baseURL,
+				DistributionAccountType:    tc.accountType,
+				DistributionAccountAddress: tc.distributionAccountAddress,
 			})
 			require.NoError(t, err)
 
@@ -338,6 +374,10 @@ func Test_Manager_ProvisionNewTenant(t *testing.T) {
 				assert.Equal(t, wantDistAccAddress, *tnt.DistributionAccountAddress)
 			case schema.DistributionAccountCircleDBVault:
 				assert.Nil(t, tnt.DistributionAccountAddress)
+			case schema.DistributionAccountStellarExternalTSA:
+				require.NotNil(t, tnt.DistributionAccountAddress)
+				assert.Equal(t, tc.distributionAccountAddress, *tnt.DistributionAccountAddress)
+				assert.Equal(t, schema.AccountStatusActive, tnt.DistributionAccountStatus)
 			default:
 				require.Failf(t, "invalid accountType=%s", string(tc.accountType))
 			}
