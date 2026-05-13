@@ -496,7 +496,7 @@ func (tw *TransactionWorker) buildAndSignTransaction(ctx context.Context, txJob 
 	}
 	innerTx, err = tw.engine.SignerRouter.SignStellarTransaction(ctx, innerTx, chAccount, distributionAccount)
 	if err != nil {
-		return nil, fmt.Errorf("signing transaction in job=%v: %w", txJob, err)
+		return nil, tw.handlePreparationError(ctx, txJob, err)
 	}
 
 	// build the outer fee-bump transaction
@@ -514,7 +514,7 @@ func (tw *TransactionWorker) buildAndSignTransaction(ctx context.Context, txJob 
 	// Sign fee-bump tx for the distribution account:
 	feeBumpTx, err = tw.engine.SignerRouter.SignFeeBumpStellarTransaction(ctx, feeBumpTx, distributionAccount)
 	if err != nil {
-		return nil, fmt.Errorf("signing fee-bump transaction for job %v: %w", txJob, err)
+		return nil, tw.handlePreparationError(ctx, txJob, err)
 	}
 
 	return feeBumpTx, nil
@@ -649,6 +649,16 @@ func (tw *TransactionWorker) handlePreparationError(ctx context.Context, txJob *
 		handlerErr := tw.handleFailedTransaction(ctx, txJob, horizon.Transaction{}, rpcErr)
 		if handlerErr != nil {
 			return fmt.Errorf("handling rpc error: %w", handlerErr)
+		}
+		return ErrTransactionHandled
+	}
+
+	// Check if it's a TSA error (retryable for 5xx, terminal for 4xx)
+	var tsaErr *utils.TSAErrorWrapper
+	if errors.As(err, &tsaErr) {
+		handlerErr := tw.handleFailedTransaction(ctx, txJob, horizon.Transaction{}, tsaErr)
+		if handlerErr != nil {
+			return fmt.Errorf("handling TSA error: %w", handlerErr)
 		}
 		return ErrTransactionHandled
 	}

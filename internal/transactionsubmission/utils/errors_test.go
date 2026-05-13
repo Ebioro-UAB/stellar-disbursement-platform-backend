@@ -1889,3 +1889,38 @@ func Test_RPCErrorWrapper_ShouldMarkAsError(t *testing.T) {
 		})
 	}
 }
+
+func Test_TSAErrorWrapper_IsRetryable(t *testing.T) {
+	testCases := []struct {
+		name          string
+		statusCode    int
+		wantRetryable bool
+	}{
+		{name: "500 is retryable", statusCode: 500, wantRetryable: true},
+		{name: "503 is retryable", statusCode: 503, wantRetryable: true},
+		{name: "400 is not retryable", statusCode: 400, wantRetryable: false},
+		{name: "401 is not retryable", statusCode: 401, wantRetryable: false},
+		{name: "404 is not retryable", statusCode: 404, wantRetryable: false},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			wrapper := NewTSAErrorWrapper(tc.statusCode, errors.New("tsa error"))
+			assert.Equal(t, tc.wantRetryable, wrapper.IsRetryable())
+			assert.Equal(t, !tc.wantRetryable, wrapper.ShouldMarkAsError())
+			assert.Equal(t, !tc.wantRetryable, wrapper.ShouldReportToCrashTracker())
+		})
+	}
+}
+
+func Test_TSAErrorWrapper_GetErrorType(t *testing.T) {
+	wrapper := NewTSAErrorWrapper(500, errors.New("tsa error"))
+	assert.Equal(t, "TSA", wrapper.GetErrorType())
+}
+
+func Test_TSAErrorWrapper_Unwrap(t *testing.T) {
+	inner := errors.New("inner error")
+	wrapper := NewTSAErrorWrapper(500, inner)
+	assert.Equal(t, inner, wrapper.Unwrap())
+	assert.Equal(t, "inner error", wrapper.Error())
+}

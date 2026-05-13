@@ -2555,6 +2555,98 @@ func Test_TransactionWorker_handlePreparationError_RPCErrorCategorization(t *tes
 	}
 }
 
+func Test_TransactionWorker_handlePreparationError_TSAErrors(t *testing.T) {
+	dbt := dbtest.OpenWithTSSMigrationsOnly(t)
+	defer dbt.Close()
+	dbConnectionPool, err := db.OpenDBConnectionPool(dbt.DSN)
+	require.NoError(t, err)
+	defer dbConnectionPool.Close()
+
+	testCases := []struct {
+		name                     string
+		statusCode               int
+		expectMarkAsError        bool
+		expectCrashTrackerReport bool
+	}{
+		{
+			name:                     "4xx is terminal — transaction marked as ERROR",
+			statusCode:               http.StatusBadRequest,
+			expectMarkAsError:        true,
+			expectCrashTrackerReport: true,
+		},
+		{
+			name:                     "401 is terminal — transaction marked as ERROR",
+			statusCode:               http.StatusUnauthorized,
+			expectMarkAsError:        true,
+			expectCrashTrackerReport: true,
+		},
+		{
+			name:                     "5xx is retryable — transaction stays PROCESSING",
+			statusCode:               http.StatusInternalServerError,
+			expectMarkAsError:        false,
+			expectCrashTrackerReport: false,
+		},
+		{
+			name:                     "503 is retryable — transaction stays PROCESSING",
+			statusCode:               http.StatusServiceUnavailable,
+			expectMarkAsError:        false,
+			expectCrashTrackerReport: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			defer store.DeleteAllFromChannelAccounts(t, ctx, dbConnectionPool)
+			defer store.DeleteAllTransactionFixtures(t, ctx, dbConnectionPool)
+
+			tw := getTransactionWorkerInstance(t, dbConnectionPool, NewMockTransactionHandler(t))
+			txJob := createTxJobFixture(t, ctx, dbConnectionPool, true, 1, 2, uuid.NewString())
+
+			tsaErr := utils.NewTSAErrorWrapper(tc.statusCode, fmt.Errorf("TSA returned %d", tc.statusCode))
+
+			mockTxProcessingLimiter := engineMocks.NewMockTransactionProcessingLimiter(t)
+			mockTxProcessingLimiter.On("AdjustLimitIfNeeded", mock.AnythingOfType("*utils.TSAErrorWrapper")).Return().Once()
+			tw.txProcessingLimiter = mockTxProcessingLimiter
+
+			mMonitorClient := sdpMonitor.NewMockMonitorClient(t)
+			mMonitorClient.On("MonitorCounters", sdpMonitor.PaymentErrorTag, mock.Anything).Return(nil).Once()
+			tw.monitorSvc = tssMonitor.TSSMonitorService{
+				Version:       "0.01",
+				GitCommitHash: "0xABC",
+				Client:        mMonitorClient,
+			}
+
+			transactionHandler := NewMockTransactionHandler(t)
+			if !tc.expectMarkAsError {
+				transactionHandler.On("RequiresRebuildOnRetry").Return(false).Maybe()
+			}
+			transactionHandler.On("MonitorTransactionProcessingFailed", ctx, &txJob, mock.Anything, !tc.expectMarkAsError, mock.Anything).
+				Run(func(args mock.Arguments) {
+					mMonitorClient.MonitorCounters(sdpMonitor.PaymentErrorTag, map[string]string{"error_type": "transaction_error"})
+				}).Return().Once()
+			tw.txHandler = transactionHandler
+
+			if tc.expectCrashTrackerReport {
+				mockCrashTrackerClient := crashtracker.NewMockCrashTrackerClient(t)
+				mockCrashTrackerClient.On("LogAndReportErrors", ctx, mock.AnythingOfType("*utils.TSAErrorWrapper"), "tsa transaction error - cannot be retried").Once()
+				tw.crashTrackerClient = mockCrashTrackerClient
+			}
+
+			err := tw.handlePreparationError(ctx, &txJob, tsaErr)
+			assert.Equal(t, ErrTransactionHandled, err)
+
+			refreshedTx, err := tw.txModel.Get(ctx, txJob.Transaction.ID)
+			require.NoError(t, err)
+			if tc.expectMarkAsError {
+				assert.Equal(t, store.TransactionStatusError, refreshedTx.Status)
+			} else {
+				assert.Equal(t, store.TransactionStatusProcessing, refreshedTx.Status)
+			}
+		})
+	}
+}
+
 func Test_TransactionWorker_handlePreparationError_NonRPCErrors(t *testing.T) {
 	dbt := dbtest.OpenWithTSSMigrationsOnly(t)
 	defer dbt.Close()

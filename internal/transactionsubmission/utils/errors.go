@@ -506,3 +506,28 @@ var (
 	_ error            = &RPCErrorWrapper{}
 	_ TransactionError = &RPCErrorWrapper{}
 )
+
+// TSAErrorWrapper wraps errors returned by the external Transaction Signing Agent (TSA).
+// 5xx and network timeouts are retryable; 4xx are terminal.
+type TSAErrorWrapper struct {
+	StatusCode int
+	Err        error
+}
+
+func NewTSAErrorWrapper(statusCode int, err error) *TSAErrorWrapper {
+	return &TSAErrorWrapper{StatusCode: statusCode, Err: err}
+}
+
+func (e *TSAErrorWrapper) Unwrap() error                    { return e.Err }
+func (e *TSAErrorWrapper) Error() string                    { return e.Err.Error() }
+func (e *TSAErrorWrapper) IsRetryable() bool                { return e.StatusCode >= 500 }
+func (e *TSAErrorWrapper) ShouldMarkAsError() bool          { return !e.IsRetryable() }
+func (e *TSAErrorWrapper) ShouldReportToCrashTracker() bool { return !e.IsRetryable() }
+func (e *TSAErrorWrapper) GetErrorType() string             { return "TSA" }
+
+var (
+	_ error            = &TSAErrorWrapper{}
+	_ TransactionError = &TSAErrorWrapper{}
+)
+
+

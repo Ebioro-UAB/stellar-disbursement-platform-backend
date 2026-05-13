@@ -15,6 +15,7 @@ import (
 	"github.com/stellar/go-stellar-sdk/xdr"
 
 	sdpUtils "github.com/stellar/stellar-disbursement-platform-backend/internal/utils"
+	tssUtils "github.com/stellar/stellar-disbursement-platform-backend/internal/transactionsubmission/utils"
 )
 
 // ExternalTSAOptions holds configuration for connecting to an external TSA service.
@@ -105,27 +106,15 @@ func (c *ExternalTSASignatureClient) SignStellarTransaction(
 		return nil, fmt.Errorf("requesting signatures from TSA: %w", err)
 	}
 
-	// Attach each returned signature to the transaction envelope.
-	for _, sig := range sigs {
-		rawSig, decodeErr := base64.StdEncoding.DecodeString(sig.Signature)
-		if decodeErr != nil {
-			return nil, fmt.Errorf("decoding base64 signature for %s: %w", sig.PublicKey, decodeErr)
-		}
+	decoratedSigs, err := decoratedSigsFromTSA(sigs)
+	if err != nil {
+		return nil, err
+	}
 
-		kp, parseErr := keypair.ParseAddress(sig.PublicKey)
-		if parseErr != nil {
-			return nil, fmt.Errorf("parsing public key %s: %w", sig.PublicKey, parseErr)
-		}
-
-		hint := kp.Hint()
-		decoratedSig := xdr.DecoratedSignature{
-			Hint:      xdr.SignatureHint(hint),
-			Signature: xdr.Signature(rawSig),
-		}
-
+	for _, decoratedSig := range decoratedSigs {
 		stellarTx, err = stellarTx.AddSignatureDecorated(decoratedSig)
 		if err != nil {
-			return nil, fmt.Errorf("attaching signature for %s: %w", sig.PublicKey, err)
+			return nil, fmt.Errorf("attaching signature for %x: %w", decoratedSig.Hint, err)
 		}
 	}
 
@@ -152,26 +141,15 @@ func (c *ExternalTSASignatureClient) SignFeeBumpStellarTransaction(
 		return nil, fmt.Errorf("requesting signatures from TSA: %w", err)
 	}
 
-	for _, sig := range sigs {
-		rawSig, decodeErr := base64.StdEncoding.DecodeString(sig.Signature)
-		if decodeErr != nil {
-			return nil, fmt.Errorf("decoding base64 signature for %s: %w", sig.PublicKey, decodeErr)
-		}
+	decoratedSigs, err := decoratedSigsFromTSA(sigs)
+	if err != nil {
+		return nil, err
+	}
 
-		kp, parseErr := keypair.ParseAddress(sig.PublicKey)
-		if parseErr != nil {
-			return nil, fmt.Errorf("parsing public key %s: %w", sig.PublicKey, parseErr)
-		}
-
-		hint := kp.Hint()
-		decoratedSig := xdr.DecoratedSignature{
-			Hint:      xdr.SignatureHint(hint),
-			Signature: xdr.Signature(rawSig),
-		}
-
+	for _, decoratedSig := range decoratedSigs {
 		feeBumpTx, err = feeBumpTx.AddSignatureDecorated(decoratedSig)
 		if err != nil {
-			return nil, fmt.Errorf("attaching signature for %s: %w", sig.PublicKey, err)
+			return nil, fmt.Errorf("attaching signature for %x: %w", decoratedSig.Hint, err)
 		}
 	}
 
@@ -193,6 +171,29 @@ func (c *ExternalTSASignatureClient) Delete(_ context.Context, _ string) error {
 
 func (c *ExternalTSASignatureClient) NetworkPassphrase() string {
 	return c.networkPassphrase
+}
+
+// decoratedSigsFromTSA converts TSA signatures (base64 + public key) to the
+// xdr.DecoratedSignature format that Stellar expects: raw ed25519 bytes + 4-byte hint.
+func decoratedSigsFromTSA(sigs []tsaSignature) ([]xdr.DecoratedSignature, error) {
+	result := make([]xdr.DecoratedSignature, 0, len(sigs))
+	for _, sig := range sigs {
+		rawSig, err := base64.StdEncoding.DecodeString(sig.Signature)
+		if err != nil {
+			return nil, fmt.Errorf("decoding base64 signature for %s: %w", sig.PublicKey, err)
+		}
+
+		kp, err := keypair.ParseAddress(sig.PublicKey)
+		if err != nil {
+			return nil, fmt.Errorf("parsing public key %s: %w", sig.PublicKey, err)
+		}
+
+		result = append(result, xdr.DecoratedSignature{
+			Hint:      xdr.SignatureHint(kp.Hint()),
+			Signature: xdr.Signature(rawSig),
+		})
+	}
+	return result, nil
 }
 
 // requestSignatures sends the XDR and the list of required signers to POST /sign
@@ -242,11 +243,11 @@ func (c *ExternalTSASignatureClient) requestSignatures(
 
 	switch {
 	case resp.StatusCode >= 500:
-		// 5xx — TSA internal error, retryable.
-		return nil, fmt.Errorf("TSA returned %d (retryable): %s", resp.StatusCode, string(respBytes))
+		return nil, tssUtils.NewTSAErrorWrapper(resp.StatusCode,
+			fmt.Errorf("TSA returned %d (retryable): %s", resp.StatusCode, string(respBytes)))
 	case resp.StatusCode >= 400:
-		// 4xx — bug in our request construction, terminal error.
-		return nil, fmt.Errorf("TSA returned %d (terminal, bad request): %s", resp.StatusCode, string(respBytes))
+		return nil, tssUtils.NewTSAErrorWrapper(resp.StatusCode,
+			fmt.Errorf("TSA returned %d (terminal): %s", resp.StatusCode, string(respBytes)))
 	case resp.StatusCode != http.StatusOK:
 		return nil, fmt.Errorf("TSA returned unexpected status %d: %s", resp.StatusCode, string(respBytes))
 	}

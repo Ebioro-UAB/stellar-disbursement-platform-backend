@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -14,6 +15,8 @@ import (
 	"github.com/stellar/go-stellar-sdk/txnbuild"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	tssUtils "github.com/stellar/stellar-disbursement-platform-backend/internal/transactionsubmission/utils"
 )
 
 // buildTestTransaction creates a minimal valid Stellar transaction for use in tests.
@@ -143,6 +146,11 @@ func TestExternalTSASignatureClient_SignStellarTransaction_TSA5xxIsRetryable(t *
 	tx := buildTestTransaction(t, kp)
 	_, err = client.SignStellarTransaction(context.Background(), tx, kp.Address())
 	require.ErrorContains(t, err, "TSA returned 500 (retryable)")
+
+	var tsaErr *tssUtils.TSAErrorWrapper
+	require.True(t, errors.As(err, &tsaErr))
+	assert.True(t, tsaErr.IsRetryable())
+	assert.Equal(t, http.StatusInternalServerError, tsaErr.StatusCode)
 }
 
 func TestExternalTSASignatureClient_SignStellarTransaction_TSA4xxIsTerminal(t *testing.T) {
@@ -161,7 +169,12 @@ func TestExternalTSASignatureClient_SignStellarTransaction_TSA4xxIsTerminal(t *t
 	kp := keypair.MustRandom()
 	tx := buildTestTransaction(t, kp)
 	_, err = client.SignStellarTransaction(context.Background(), tx, kp.Address())
-	require.ErrorContains(t, err, "TSA returned 400 (terminal, bad request)")
+	require.ErrorContains(t, err, "TSA returned 400 (terminal)")
+
+	var tsaErr *tssUtils.TSAErrorWrapper
+	require.True(t, errors.As(err, &tsaErr))
+	assert.False(t, tsaErr.IsRetryable())
+	assert.Equal(t, http.StatusBadRequest, tsaErr.StatusCode)
 }
 
 func TestExternalTSASignatureClient_SignStellarTransaction_TimeoutIsRetryable(t *testing.T) {
