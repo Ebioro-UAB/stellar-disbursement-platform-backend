@@ -1,0 +1,14 @@
+build:
+  docker:
+    web: Dockerfile.heroku
+    worker: Dockerfile.heroku
+    release: Dockerfile.heroku
+
+release:
+  command:
+    - ./stellar-disbursement-platform db admin migrate up && ./stellar-disbursement-platform db tss migrate up
+  image: release
+
+run:
+  web: ./entrypoint.sh
+  worker: ./stellar-disbursement-platform tss

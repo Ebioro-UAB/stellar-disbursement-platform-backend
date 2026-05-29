@@ -1,0 +1,22 @@
+# Heroku-specific image. Same build stage as the upstream Dockerfile but
+# without ENTRYPOINT so heroku.yml process commands run as-is, and with
+# entrypoint.sh included for the admin-port swap.
+
+FROM golang:1.26-alpine AS build
+ARG GIT_COMMIT
+
+ENV CGO_ENABLED=0 GOOS=linux
+WORKDIR /src/stellar-disbursement-platform
+ADD go.mod go.sum ./
+RUN go mod download
+COPY . ./
+RUN go build -o /bin/stellar-disbursement-platform -ldflags "-X main.GitCommit=$GIT_COMMIT" .
+
+
+FROM alpine:3.23
+
+RUN apk add --no-cache ca-certificates
+COPY --from=build /bin/stellar-disbursement-platform /app/
+COPY entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
+WORKDIR /app
