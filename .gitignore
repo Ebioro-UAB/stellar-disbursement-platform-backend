@@ -33,3 +33,7 @@ dev/certs/
 # Rust & Soroban
 target/
 test_snapshots/
+
+# Claude Code / MCP local state — never commit
+.claude/
+.mcp.json
